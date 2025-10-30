@@ -7,7 +7,7 @@ import { ConversationTurn } from './components/ConversationTurn';
 import { StatusDisplay } from './components/StatusDisplay';
 import { ControlButton } from './components/ControlButton';
 import { AudioVisualizer } from './components/AudioVisualizer';
-import { decode, encode, encodeWAV, decodeAudioData } from './utils/audioUtils';
+import { decode, encode, encodeWAV, encodeWAVFromPCM, decodeAudioData } from './utils/audioUtils';
 import type { Turn, ConnectionState } from './types';
 import { BotIcon, UserIcon } from './components/Icons';
 
@@ -17,6 +17,35 @@ interface LiveSession {
   close: () => void;
   sendRealtimeInput: (input: { media: GenAIBlob }) => void;
 }
+
+const concatFloat32Arrays = (arrays: Float32Array[]): Float32Array => {
+    let totalLength = 0;
+    for (const arr of arrays) {
+      totalLength += arr.length;
+    }
+    const result = new Float32Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+      result.set(arr, offset);
+      offset += arr.length;
+    }
+    return result;
+};
+
+const concatUint8Arrays = (arrays: Uint8Array[]): Uint8Array => {
+    let totalLength = 0;
+    for (const arr of arrays) {
+      totalLength += arr.length;
+    }
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+      result.set(arr, offset);
+      offset += arr.length;
+    }
+    return result;
+};
+
 
 const App: React.FC = () => {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
@@ -34,7 +63,7 @@ const App: React.FC = () => {
   const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
   const userAudioChunksRef = useRef<Float32Array[]>([]);
-  const modelAudioChunksRef = useRef<Float32Array[]>([]);
+  const modelAudioChunksRef = useRef<Uint8Array[]>([]); // Store raw PCM bytes for model audio
   const currentUserTranscriptionRef = useRef('');
   const currentModelTranscriptionRef = useRef('');
 
@@ -141,7 +170,10 @@ const App: React.FC = () => {
             const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64EncodedAudioString && outputAudioContextRef.current) {
                 const audioBytes = decode(base64EncodedAudioString);
-                modelAudioChunksRef.current.push(new Float32Array(new Int16Array(audioBytes.buffer).map(x => x / 32768.0)));
+                // Store raw bytes for reliable file saving
+                modelAudioChunksRef.current.push(audioBytes);
+
+                // Decode for immediate playback
                 const audioBuffer = await decodeAudioData(audioBytes, outputAudioContextRef.current, 24000, 1);
                 const sourceNode = outputAudioContextRef.current.createBufferSource();
                 sourceNode.buffer = audioBuffer;
@@ -168,26 +200,14 @@ const App: React.FC = () => {
                 const finalUserTranscription = currentUserTranscriptionRef.current;
                 const finalModelTranscription = currentModelTranscriptionRef.current;
                 
-                // Concatenate and create audio blobs
                 const userAudio = userAudioChunksRef.current.length > 0
-                  ? encodeWAV(
-                      userAudioChunksRef.current.reduce((acc, val) => {
-                          const newAcc = new Float32Array(acc.length + val.length);
-                          newAcc.set(acc);
-                          newAcc.set(val, acc.length);
-                          return newAcc;
-                      }, new Float32Array(0)), 16000)
-                  : null;
+                    ? encodeWAV(concatFloat32Arrays(userAudioChunksRef.current), 16000)
+                    : null;
                 
-                const modelAudio = modelAudioChunksRef.current.length > 0
-                ? encodeWAV(
-                    modelAudioChunksRef.current.reduce((acc, val) => {
-                        const newAcc = new Float32Array(acc.length + val.length);
-                        newAcc.set(acc);
-                        newAcc.set(val, acc.length);
-                        return newAcc;
-                    }, new Float32Array(0)), 24000)
-                : null;
+                const modelAudioPcm = concatUint8Arrays(modelAudioChunksRef.current);
+                const modelAudio = modelAudioPcm.length > 0
+                    ? encodeWAVFromPCM(modelAudioPcm, 24000)
+                    : null;
                 
                 if (finalUserTranscription || finalModelTranscription) {
                     setTranscriptionHistory(prev => [

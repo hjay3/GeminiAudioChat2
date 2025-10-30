@@ -44,14 +44,14 @@ export const ConversationTurn: React.FC<ConversationTurnProps> = ({ turn }) => {
             <p className="text-dark-text-primary">{turn.user}</p>
           </div>
            <div className="w-10 flex-shrink-0 flex items-center justify-center">
-                <AudioDownloadButton audioBlob={turn.userAudio} fileName="user_query.mp3" />
+                <AudioDownloadButton audioBlob={turn.userAudio} fileName="user_query.wav" />
            </div>
         </div>
       )}
       {turn.model && (
         <div className="flex items-start space-x-4">
            <div className="w-10 flex-shrink-0 flex items-center justify-center">
-                <AudioDownloadButton audioBlob={turn.modelAudio} fileName="ai_response.mp3" />
+                <AudioDownloadButton audioBlob={turn.modelAudio} fileName="ai_response.wav" />
            </div>
           <div className="flex-grow bg-dark-surface p-4 rounded-lg rounded-tr-none text-right">
             <p className="text-dark-text-primary">{turn.model}</p>
